@@ -53,7 +53,7 @@ public class LocationService {
      * Maps to Redis FEORADIUS command.
      */
 
-    public List<DriverResponse> findNearbyDrivers(
+    public List<DriverResponse> fetchDrivers(
             double latitude, double longitude, double radiusInKm) {
 
         log.info("Finding drivers near lat: {} long: {} withing {}Km",

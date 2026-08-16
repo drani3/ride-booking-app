@@ -1,4 +1,4 @@
-package com.rideapp.matching_service;
+package com.rideapp.matchingservice;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;

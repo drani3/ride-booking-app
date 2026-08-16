@@ -1,7 +1,7 @@
 # Read Me First
 The following was discovered as part of building this project:
 
-* The original package name 'com.rideapp.matching-service' is invalid and this project uses 'com.rideapp.matching_service' instead.
+* The original package name 'com.rideapp.matching-service' is invalid and this project uses 'com.rideapp.matchingservice' instead.
 
 # Getting Started
 
