@@ -42,7 +42,7 @@ spring:
                 headers: false
             value:
               default:
-                type: com.rideshare.rideservice.event.RideMatchedEvent
+                type: com.rideapp.rideservice.event.RideMatchedEvent
 #Actuator
 management:
   endpoints:

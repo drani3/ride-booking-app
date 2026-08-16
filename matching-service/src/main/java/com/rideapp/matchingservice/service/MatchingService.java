@@ -1,7 +1,7 @@
 package com.rideapp.matchingservice.service;
 
 import com.rideapp.matchingservice.client.LocationServiceClient;
-import com.rideapp.matchingservice.dto.NearByDriverResponse;
+import com.rideapp.matchingservice.dto.DriverResponse;
 import com.rideapp.matchingservice.event.RideMatchedEvent;
 import com.rideapp.matchingservice.event.RideRequestedEvent;
 import lombok.RequiredArgsConstructor;
@@ -36,7 +36,7 @@ public class MatchingService {
 
     public void matchDriverForRide(RideRequestedEvent event){
 
-        List<NearByDriverResponse> nearByDrivers = locationServiceClient.getNearByDrivers(
+        List<DriverResponse> nearByDrivers = locationServiceClient.getNearByDrivers(
                 event.getPickupLatitude(),
                 event.getPickupLongitude(),
                 DEFAULT_SEARCH_RADIUS_KM
@@ -48,14 +48,14 @@ public class MatchingService {
         }
 
         // STEP 2: Score each driver and pick the best one
-        Optional<NearByDriverResponse> bestDriver = findBestDriver(nearByDrivers);
+        Optional<DriverResponse> bestDriver = findBestDriver(nearByDrivers);
 
         if(bestDriver.isEmpty()){
             log.warn("could not find suitable driver for ride");
             return;
         }
 
-        NearByDriverResponse assignedDriver = bestDriver.get();
+        DriverResponse assignedDriver = bestDriver.get();
 
         //STEP 3: Publish RideMatchedEvent to Kafka
         RideMatchedEvent matchedEvent = new RideMatchedEvent(
@@ -64,7 +64,7 @@ public class MatchingService {
                 assignedDriver.getDriverId(),
                 assignedDriver.getLatitude(),
                 assignedDriver.getLongitude(),
-                assignedDriver.getDistanceInKm()
+                assignedDriver.getDistance()
         );
 
         kafkaTemplate.send(RIDE_MATCHED_TOPIC, event.getRideId(), matchedEvent);
@@ -83,8 +83,8 @@ public class MatchingService {
      * @return
      */
 
-    private Optional<NearByDriverResponse> findBestDriver(
-            List<NearByDriverResponse> drivers){
+    private Optional<DriverResponse> findBestDriver(
+            List<DriverResponse> drivers){
 
         double distanceWeight = 0.7;
         double ratingWeight = 0.3;
@@ -93,7 +93,7 @@ public class MatchingService {
                 .max(Comparator.comparingDouble(driver -> {
                     //Distance score: closer = higher score
                     // Add 0.1 to avoid division by zero
-                    double distanceScore = 1.0/(driver.getDistanceInKm() + 0.1);
+                    double distanceScore = 1.0/(driver.getDistance() + 0.1);
 
                     // Simulated rating between 4.0 and 5.0
                     // In production: fetch from Driver Service

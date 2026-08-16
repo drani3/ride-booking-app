@@ -11,9 +11,9 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class NearByDriverResponse {
+public class DriverResponse {
     private String driverId;
     private double latitude;
     private double longitude;
-    private double distanceInKm;
+    private double distance;
 }

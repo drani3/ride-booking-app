@@ -23,7 +23,7 @@ spring:
                 headers: false
             value:
               default:
-                type: com.rideshare.matchingservice.event.RideRequestedEvent
+                type: com.rideapp.matchingservice.event.RideRequestedEvent
     #Kafka Producer
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
