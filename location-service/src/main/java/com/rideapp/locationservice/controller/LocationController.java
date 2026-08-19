@@ -44,6 +44,16 @@ public class LocationController{
         return ResponseEntity.ok("Driver removed successfully");
     }
 
+    @PostMapping("/drivers/{driverId}/assign")
+    public boolean assignDriver(@PathVariable String driverId) {
+        return locationService.assignDriver(driverId);
+    }
+
+    @PostMapping("/drivers/{driverId}/available")
+    public void markDriverAvailable(
+            @PathVariable String driverId) {
+        locationService.markDriverAvailable(driverId);
+    }
 
 
 }

@@ -1,5 +1,6 @@
 package com.rideapp.rideservice.service;
 
+import com.rideapp.rideservice.client.LocationServiceClient;
 import com.rideapp.rideservice.dto.RideRequest;
 import com.rideapp.rideservice.dto.RideResponse;
 import com.rideapp.rideservice.event.RideRequestedEvent;
@@ -22,6 +23,7 @@ public class RideService {
 
     private final RideRepository rideRepository;
     private final KafkaTemplate<String, RideRequestedEvent>  kafkaTemplate;
+    private final LocationServiceClient locationServiceClient;
 
     private static final String RIDE_REQUESTED_TOPIC = "ride.requested";
 
@@ -105,7 +107,7 @@ public class RideService {
         ride.setCompletedAt(LocalDateTime.now());
         ride.setActualFare(ride.getEstimatedFare());
         rideRepository.save(ride);
-
+        locationServiceClient.markDriverAvailable(ride.getDriverId());
         return mapToResponse(ride);
 
     }

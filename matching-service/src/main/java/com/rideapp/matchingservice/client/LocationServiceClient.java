@@ -19,6 +19,6 @@ public interface LocationServiceClient {
             @RequestParam double radius
     );
 
-    @PostMapping("/drivers/{driverId}/assign")
+    @PostMapping("/api/v1/location/drivers/{driverId}/assign")
     boolean assignDriver(@PathVariable String driverId);
 }

@@ -43,6 +43,10 @@ spring:
             value:
               default:
                 type: com.rideapp.rideservice.event.RideMatchedEvent
+location:
+  service:
+    url: http://localhost:8082
+
 #Actuator
 management:
   endpoints:

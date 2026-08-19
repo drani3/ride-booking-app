@@ -105,6 +105,8 @@ public class LocationService {
                 point,
                 driverId
         );
+
+        log.info("Driver {} is now available", driverId);
     }
 
     public void markDriverUnavailable(String driverId) {
