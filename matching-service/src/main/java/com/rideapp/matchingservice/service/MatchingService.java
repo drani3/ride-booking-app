@@ -24,16 +24,6 @@ public class MatchingService {
     private static final String RIDE_MATCHED_TOPIC = "ride.matched";
     private static final double DEFAULT_SEARCH_RADIUS_KM = 5.0;
 
-    /**
-     * Main matching alogorith
-     * Called when RideRequestedEvent is consumed from Kafka
-     * @param event
-     *
-     * STEPS:
-     * 1. Ask Location Service for nearby drivers
-     * 2. Score each driver and pick the best one
-     */
-
     public void matchDriverForRide(RideRequestedEvent event){
 
         List<DriverResponse> nearByDrivers = locationServiceClient.getNearByDrivers(
@@ -47,63 +37,52 @@ public class MatchingService {
             return;
         }
 
-        // STEP 2: Score each driver and pick the best one
-        Optional<DriverResponse> bestDriver = findBestDriver(nearByDrivers);
+        List<DriverResponse> bestDrivers = findBestDrivers(nearByDrivers);
 
-        if(bestDriver.isEmpty()){
-            log.warn("could not find suitable driver for ride");
-            return;
+        for(DriverResponse driver : bestDrivers){
+            boolean assigned =
+                    locationServiceClient.assignDriver(
+                            driver.getDriverId()
+                    );
+
+            if (assigned) {
+                RideMatchedEvent matchedEvent = new RideMatchedEvent(
+                        event.getRideId(),
+                        event.getRiderId(),
+                        driver.getDriverId(),
+                        driver.getLatitude(),
+                        driver.getLongitude(),
+                        driver.getDistance()
+                );
+
+                kafkaTemplate.send(RIDE_MATCHED_TOPIC, event.getRideId(), matchedEvent);
+                log.info("RideMatchedEvent published");
+                return;
+            }
         }
 
-        DriverResponse assignedDriver = bestDriver.get();
-
-        //STEP 3: Publish RideMatchedEvent to Kafka
-        RideMatchedEvent matchedEvent = new RideMatchedEvent(
-                event.getRideId(),
-                event.getRiderId(),
-                assignedDriver.getDriverId(),
-                assignedDriver.getLatitude(),
-                assignedDriver.getLongitude(),
-                assignedDriver.getDistance()
-        );
-
-        kafkaTemplate.send(RIDE_MATCHED_TOPIC, event.getRideId(), matchedEvent);
-        log.info("RideMatchedEvent published");
+        log.warn("could not find suitable driver for ride");
     }
 
-    /**
-     * Driver Scoring algorithm
-     *
-     * Distance: 70%
-     * Rating: 30%
-     *
-     * Score = (1 / distance) * distanceWeight + rating * ratingWeight
-     *
-     * @param drivers
-     * @return
-     */
-
-    private Optional<DriverResponse> findBestDriver(
-            List<DriverResponse> drivers){
+    private List<DriverResponse> findBestDrivers(
+            List<DriverResponse> drivers) {
 
         double distanceWeight = 0.7;
         double ratingWeight = 0.3;
 
         return drivers.stream()
-                .max(Comparator.comparingDouble(driver -> {
-                    //Distance score: closer = higher score
-                    // Add 0.1 to avoid division by zero
-                    double distanceScore = 1.0/(driver.getDistance() + 0.1);
+                .sorted(Comparator.comparingDouble((DriverResponse driver) -> {
 
-                    // Simulated rating between 4.0 and 5.0
-                    // In production: fetch from Driver Service
+                    double distanceScore =
+                            1.0 / (driver.getDistance() + 0.1);
 
-                    double simulatedRating = 4.0 + Math.random();
+                    double simulatedRating =
+                            4.0 + Math.random();
 
-                    //Final weighted score
                     return (distanceScore * distanceWeight)
                             + (simulatedRating * ratingWeight);
-                }));
-    }
 
+                }).reversed())
+                .toList();
+    }
 }

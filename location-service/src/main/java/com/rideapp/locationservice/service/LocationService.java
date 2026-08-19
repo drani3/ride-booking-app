@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.connection.RedisGeoCommands;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.geo.*;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -20,19 +21,46 @@ public class LocationService {
 
     private final RedisTemplate<String, String> redisTemplate;
 
-    //Redis key for all driver locations
     private static final String DRIVERS_GEO_KEY = "drivers:locations";
+    private static final String AVAILABLE_DRIVERS_GEO_KEY =
+            "drivers:available:locations";
+    private static final String RESERVE_DRIVER_SCRIPT = """
+        local status = redis.call('GET', KEYS[1])
 
-    /**
-     * Update driver location in Redis.
-     * Called every 3 seconds by driver's phone
-     * Maps to Redis GEOADD command
-     */
+        if status == 'AVAILABLE' then
+            redis.call('SET', KEYS[1], 'ON_TRIP')
+            redis.call('ZREM', KEYS[2], ARGV[1])
+            return 1
+        end
 
+        return 0
+        """;
+
+    private static final String ASSIGN_DRIVER_SCRIPT = """
+        local exists = redis.call('ZSCORE', KEYS[1], ARGV[1])
+
+        if exists then
+            redis.call('ZREM', KEYS[1], ARGV[1])
+            return 1
+        end
+
+        return 0
+        """;
+
+    private final DefaultRedisScript<Long> reserveDriverScript =
+            new DefaultRedisScript<>(
+                    RESERVE_DRIVER_SCRIPT,
+                    Long.class
+            );
+
+    private final DefaultRedisScript<Long> assignDriverScript =
+            new DefaultRedisScript<>(
+                    ASSIGN_DRIVER_SCRIPT,
+                    Long.class
+            );
     public void updateDriverLocation(Driver driver){
         log.info("Updating location for driver: {}", driver.getDriverId());
 
-        // IMPORTANT: longitude FIRST, latitude SECOND - GeoSpatial Standard
         Point driverPoint = new Point(
                 driver.getLongitude(),
                 driver.getLatitude()
@@ -44,14 +72,48 @@ public class LocationService {
                 driver.getDriverId()
         );
 
+        Double score = redisTemplate.opsForZSet().score(
+                AVAILABLE_DRIVERS_GEO_KEY,
+                driver.getDriverId()
+        );
+
+        if (score != null) {
+            redisTemplate.opsForGeo().add(
+                    AVAILABLE_DRIVERS_GEO_KEY,
+                    driverPoint,
+                    driver.getDriverId()
+            );
+        }
+
         log.info("Location updated for driver: {}", driver.getDriverId());
     }
 
-    /**
-     * Find nearby drivers within given radius.
-     * Called by Matching Service on ride request.
-     * Maps to Redis FEORADIUS command.
-     */
+    public void markDriverAvailable(String driverId) {
+
+        List<Point> positions = redisTemplate.opsForGeo()
+                .position(DRIVERS_GEO_KEY, driverId);
+
+        if (positions == null || positions.isEmpty() || positions.get(0) == null) {
+            log.warn("Cannot mark driver {} available: location not found", driverId);
+            return;
+        }
+
+        Point point = positions.get(0);
+
+        redisTemplate.opsForGeo().add(
+                AVAILABLE_DRIVERS_GEO_KEY,
+                point,
+                driverId
+        );
+    }
+
+    public void markDriverUnavailable(String driverId) {
+
+        redisTemplate.opsForGeo().remove(
+                AVAILABLE_DRIVERS_GEO_KEY,
+                driverId
+        );
+    }
 
     public List<DriverResponse> fetchDrivers(
             double latitude, double longitude, double radiusInKm) {
@@ -66,7 +128,7 @@ public class LocationService {
 
         GeoResults<RedisGeoCommands.GeoLocation<String>> results =
                 redisTemplate.opsForGeo().radius(
-                        DRIVERS_GEO_KEY,
+                        AVAILABLE_DRIVERS_GEO_KEY,
                         searchArea,
                         RedisGeoCommands.GeoRadiusCommandArgs.newGeoRadiusArgs()
                                 .includeCoordinates()
@@ -92,13 +154,20 @@ public class LocationService {
         return nearbyDrivers;
     }
 
-    /**
-     * Remove driver when they go offline
-     * Maps to Redis ZREM command.
-     */
+    public boolean assignDriver(String driverId) {
+
+        Long result = redisTemplate.execute(
+                assignDriverScript,
+                List.of(AVAILABLE_DRIVERS_GEO_KEY),
+                driverId
+        );
+
+        return result == 1L;
+    }
 
     public void removeDriver(String driverId){
         log.info("Removing driver: {}", driverId);
         redisTemplate.opsForGeo().remove(DRIVERS_GEO_KEY, driverId);
+        redisTemplate.opsForGeo().remove(AVAILABLE_DRIVERS_GEO_KEY, driverId);
     }
 }
