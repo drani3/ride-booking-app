@@ -47,11 +47,6 @@ public class LocationService {
         return 0
         """;
 
-    private final DefaultRedisScript<Long> reserveDriverScript =
-            new DefaultRedisScript<>(
-                    RESERVE_DRIVER_SCRIPT,
-                    Long.class
-            );
 
     private final DefaultRedisScript<Long> assignDriverScript =
             new DefaultRedisScript<>(
@@ -107,14 +102,6 @@ public class LocationService {
         );
 
         log.info("Driver {} is now available", driverId);
-    }
-
-    public void markDriverUnavailable(String driverId) {
-
-        redisTemplate.opsForGeo().remove(
-                AVAILABLE_DRIVERS_GEO_KEY,
-                driverId
-        );
     }
 
     public List<DriverResponse> fetchDrivers(

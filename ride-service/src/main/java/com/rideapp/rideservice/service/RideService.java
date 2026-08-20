@@ -118,6 +118,7 @@ public class RideService {
 
         ride.setStatus(RideStatus.CANCELLED);
         rideRepository.save(ride);
+        locationServiceClient.markDriverAvailable(ride.getDriverId());
         return mapToResponse(ride);
     }
 
@@ -176,6 +177,7 @@ public class RideService {
         response.setCreatedAt(ride.getCreatedAt());
         response.setStartedAt(ride.getStartedAt());
         response.setCompletedAt(ride.getCompletedAt());
+        response.setUpdatedAt(ride.getUpdatedAt());
         return response;
     }
 }
