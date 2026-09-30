@@ -1,6 +1,8 @@
 package com.rideapp.rideservice.service;
 
 import com.rideapp.rideservice.client.LocationServiceClient;
+import com.rideapp.rideservice.dto.GeocodingRequest;
+import com.rideapp.rideservice.dto.GeocodingResponse;
 import com.rideapp.rideservice.dto.RideRequest;
 import com.rideapp.rideservice.dto.RideResponse;
 import com.rideapp.rideservice.event.RideRequestedEvent;
@@ -34,15 +36,60 @@ public class RideService {
     public RideResponse requestRide(RideRequest request){
         log.info("New ride request from rider: {}", request.getRiderId());
 
+        // Geocode addresses if coordinates not provided
+        double pickupLat, pickupLng, dropLat, dropLng;
+        String formattedPickupAddress = request.getPickupAddress();
+        String formattedDropAddress = request.getDropAddress();
+
+        // Handle pickup location
+        if (request.getPickupLatitude() != null && request.getPickupLongitude() != null) {
+            pickupLat = request.getPickupLatitude();
+            pickupLng = request.getPickupLongitude();
+            log.info("Using provided pickup coordinates: lat: {}, lng: {}", pickupLat, pickupLng);
+        } else {
+            GeocodingRequest geocodeRequest = new GeocodingRequest(request.getPickupAddress());
+            GeocodingResponse pickupResponse = locationServiceClient.geocodeAddress(geocodeRequest);
+            
+            if (pickupResponse.isValid()) {
+                pickupLat = pickupResponse.getLatitude();
+                pickupLng = pickupResponse.getLongitude();
+                formattedPickupAddress = pickupResponse.getFormattedAddress();
+                log.info("Geocoded pickup address: {} -> lat: {}, lng: {}", request.getPickupAddress(), pickupLat, pickupLng);
+            } else {
+                throw new RuntimeException("Failed to geocode pickup address: " + request.getPickupAddress() + 
+                    ". Error: " + pickupResponse.getErrorMessage());
+            }
+        }
+
+        // Handle drop location
+        if (request.getDropLatitude() != null && request.getDropLongitude() != null) {
+            dropLat = request.getDropLatitude();
+            dropLng = request.getDropLongitude();
+            log.info("Using provided drop coordinates: lat: {}, lng: {}", dropLat, dropLng);
+        } else {
+            GeocodingRequest geocodeRequest = new GeocodingRequest(request.getDropAddress());
+            GeocodingResponse dropResponse = locationServiceClient.geocodeAddress(geocodeRequest);
+            
+            if (dropResponse.isValid()) {
+                dropLat = dropResponse.getLatitude();
+                dropLng = dropResponse.getLongitude();
+                formattedDropAddress = dropResponse.getFormattedAddress();
+                log.info("Geocoded drop address: {} -> lat: {}, lng: {}", request.getDropAddress(), dropLat, dropLng);
+            } else {
+                throw new RuntimeException("Failed to geocode drop address: " + request.getDropAddress() + 
+                    ". Error: " + dropResponse.getErrorMessage());
+            }
+        }
+
         //Step 1: save ride to database
         Ride ride = new Ride();
         ride.setRiderId(request.getRiderId());
-        ride.setPickupLatitude(request.getPickupLatitude());
-        ride.setPickupLongitude(request.getPickupLongitude());
-        ride.setPickupAddress(request.getPickupAddress());
-        ride.setDropLatitude(request.getDropLatitude());
-        ride.setDropLongitude(request.getDropLongitude());
-        ride.setDropAddress(request.getDropAddress());
+        ride.setPickupLatitude(pickupLat);
+        ride.setPickupLongitude(pickupLng);
+        ride.setPickupAddress(formattedPickupAddress);
+        ride.setDropLatitude(dropLat);
+        ride.setDropLongitude(dropLng);
+        ride.setDropAddress(formattedDropAddress);
         ride.setStatus(RideStatus.REQUESTED);
         ride.setEstimatedFare(calculateEstimateFare(request));
 
@@ -79,6 +126,15 @@ public class RideService {
         ride.setDriverId(driverId);
         ride.setStatus(RideStatus.ACCEPTED);
         rideRepository.save(ride);
+    }
+
+    public void simulateDriverToPickupLocation(String rideId){
+        int step_size = 10;
+        Ride ride = rideRepository.findById(rideId)
+                .orElseThrow(() -> new RuntimeException("Ride not found"));
+        double lat = ride.getPickupLatitude() + (ride.getDropLatitude()-ride.getPickupLatitude())/step_size;
+        double lng = ride.getPickupLongitude() + (ride.getDropLongitude()-ride.getPickupLongitude())/step_size;
+
     }
 
     public RideResponse startRide(String rideId){

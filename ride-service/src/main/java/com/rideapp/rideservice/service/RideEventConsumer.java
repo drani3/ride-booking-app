@@ -22,5 +22,8 @@ public class RideEventConsumer {
                 event.getRideId(),
                 event.getDriverId()
         );
+        rideService.simulateDriverToPickupLocation(
+                event.getRideId()
+        );
     }
 }
