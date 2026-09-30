@@ -1,5 +1,7 @@
 package com.rideapp.rideservice.client;
 
+import com.rideapp.rideservice.dto.DirectionsRequest;
+import com.rideapp.rideservice.dto.DirectionsResponse;
 import com.rideapp.rideservice.dto.GeocodingRequest;
 import com.rideapp.rideservice.dto.GeocodingResponse;
 import com.rideapp.rideservice.dto.ReverseGeocodingRequest;
@@ -31,5 +33,10 @@ public interface LocationServiceClient {
     @GetMapping("/api/v1/location/validate")
     Boolean validateAddress(
             @RequestParam String address
+    );
+
+    @PostMapping("/api/v1/location/directions")
+    DirectionsResponse calculateDirections(
+            @RequestBody DirectionsRequest request
     );
 }

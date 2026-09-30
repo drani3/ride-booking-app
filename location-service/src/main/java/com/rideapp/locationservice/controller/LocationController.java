@@ -2,9 +2,12 @@ package com.rideapp.locationservice.controller;
 
 import com.rideapp.locationservice.dto.DriverResponse;
 import com.rideapp.locationservice.dto.Driver;
+import com.rideapp.locationservice.dto.DirectionsRequest;
+import com.rideapp.locationservice.dto.DirectionsResponse;
 import com.rideapp.locationservice.dto.GeocodingRequest;
 import com.rideapp.locationservice.dto.GeocodingResponse;
 import com.rideapp.locationservice.dto.ReverseGeocodingRequest;
+import com.rideapp.locationservice.service.DirectionsService;
 import com.rideapp.locationservice.service.GeocodingService;
 import com.rideapp.locationservice.service.LocationService;
 import lombok.extern.slf4j.Slf4j;
@@ -20,10 +23,12 @@ public class LocationController{
 
     private final LocationService locationService;
     private final GeocodingService geocodingService;
+    private final DirectionsService directionsService;
 
-    public LocationController(LocationService locationService, GeocodingService geocodingService) {
+    public LocationController(LocationService locationService, GeocodingService geocodingService, DirectionsService directionsService) {
         this.locationService = locationService;
         this.geocodingService = geocodingService;
+        this.directionsService = directionsService;
     }
 
     @PostMapping("/drivers/update")
@@ -80,6 +85,23 @@ public class LocationController{
             @RequestParam String address) {
         boolean isValid = geocodingService.validateAddress(address);
         return ResponseEntity.ok(isValid);
+    }
+
+    @PostMapping("/directions")
+    public ResponseEntity<DirectionsResponse> calculateDirections(
+            @RequestBody DirectionsRequest request) {
+        DirectionsResponse response = directionsService.calculateRoute(request);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/eta")
+    public ResponseEntity<Long> calculateETA(
+            @RequestParam double currentLat,
+            @RequestParam double currentLng,
+            @RequestParam double destLat,
+            @RequestParam double destLng) {
+        long eta = directionsService.calculateETA(currentLat, currentLng, destLat, destLng);
+        return ResponseEntity.ok(eta);
     }
 
 }

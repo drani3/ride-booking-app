@@ -1,14 +1,18 @@
 package com.rideapp.rideservice.service;
 
 import com.rideapp.rideservice.client.LocationServiceClient;
+import com.rideapp.rideservice.dto.DirectionsRequest;
+import com.rideapp.rideservice.dto.DirectionsResponse;
 import com.rideapp.rideservice.dto.GeocodingRequest;
 import com.rideapp.rideservice.dto.GeocodingResponse;
+import com.rideapp.rideservice.dto.RouteUpdate;
 import com.rideapp.rideservice.dto.RideRequest;
 import com.rideapp.rideservice.dto.RideResponse;
 import com.rideapp.rideservice.event.RideRequestedEvent;
 import com.rideapp.rideservice.model.Ride;
 import com.rideapp.rideservice.model.RideStatus;
 import com.rideapp.rideservice.repository.RideRepository;
+import com.rideapp.rideservice.service.LocationTrackingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -26,6 +30,7 @@ public class RideService {
     private final RideRepository rideRepository;
     private final KafkaTemplate<String, RideRequestedEvent>  kafkaTemplate;
     private final LocationServiceClient locationServiceClient;
+    private final LocationTrackingService locationTrackingService;
 
     private static final String RIDE_REQUESTED_TOPIC = "ride.requested";
 
@@ -126,6 +131,51 @@ public class RideService {
         ride.setDriverId(driverId);
         ride.setStatus(RideStatus.ACCEPTED);
         rideRepository.save(ride);
+
+        // Calculate and broadcast route to rider
+        calculateAndBroadcastRoute(ride);
+    }
+
+    private void calculateAndBroadcastRoute(Ride ride) {
+        try {
+            DirectionsRequest request = new DirectionsRequest(
+                    ride.getPickupLatitude(),
+                    ride.getPickupLongitude(),
+                    ride.getDropLatitude(),
+                    ride.getDropLongitude()
+            );
+
+            DirectionsResponse directionsResponse = locationServiceClient.calculateDirections(request);
+
+            if (directionsResponse.isValid()) {
+                // Convert to RouteUpdate DTO
+                List<RouteUpdate.RouteStep> steps = new java.util.ArrayList<>();
+                if (directionsResponse.getSteps() != null) {
+                    for (DirectionsResponse.RouteStep step : directionsResponse.getSteps()) {
+                        steps.add(new RouteUpdate.RouteStep(
+                                step.getInstruction(),
+                                step.getDistanceMeters(),
+                                step.getDurationSeconds()
+                        ));
+                    }
+                }
+
+                RouteUpdate routeUpdate = new RouteUpdate(
+                        ride.getId(),
+                        directionsResponse.getEncodedPolyline(),
+                        directionsResponse.getDistanceMeters(),
+                        directionsResponse.getDurationSeconds(),
+                        steps
+                );
+
+                locationTrackingService.broadcastRouteUpdate(routeUpdate);
+                log.info("Route calculated and broadcast for ride {}", ride.getId());
+            } else {
+                log.warn("Failed to calculate route for ride {}: {}", ride.getId(), directionsResponse.getErrorMessage());
+            }
+        } catch (Exception e) {
+            log.error("Error calculating route for ride {}", ride.getId(), e);
+        }
     }
 
     public void simulateDriverToPickupLocation(String rideId){
