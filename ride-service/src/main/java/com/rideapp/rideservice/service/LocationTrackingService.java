@@ -42,13 +42,21 @@ public class LocationTrackingService {
         log.info("Driver unsubscribed from ride {}", rideId);
     }
 
+    /**
+     * Fan out via Redis so every ride-service instance (including this one)
+     * pushes the update to its own WebSocket clients.
+     */
     public void broadcastDriverLocation(DriverLocationUpdate update) {
+        redisPublisher.publishDriverLocation(update);
+        log.debug("Published driver location for ride {}", update.getRideId());
+    }
+
+    /**
+     * Called by the Redis subscriber; only delivers to clients connected to this instance.
+     */
+    public void sendDriverLocationToLocalClients(DriverLocationUpdate update) {
         String topic = "/topic/ride/" + update.getRideId() + "/driver-location";
         messagingTemplate.convertAndSend(topic, update);
-        
-        // Also publish to Redis for multi-instance support
-        redisPublisher.publishDriverLocation(update);
-        
         log.debug("Broadcasted driver location for ride {}", update.getRideId());
     }
 

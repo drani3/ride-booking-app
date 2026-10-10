@@ -67,22 +67,9 @@ public class MatchingService {
     private List<DriverResponse> findBestDrivers(
             List<DriverResponse> drivers) {
 
-        double distanceWeight = 0.7;
-        double ratingWeight = 0.3;
-
+        // Closest driver first. No real rating data exists yet, so distance is the only signal.
         return drivers.stream()
-                .sorted(Comparator.comparingDouble((DriverResponse driver) -> {
-
-                    double distanceScore =
-                            1.0 / (driver.getDistance() + 0.1);
-
-                    double simulatedRating =
-                            4.0 + Math.random();
-
-                    return (distanceScore * distanceWeight)
-                            + (simulatedRating * ratingWeight);
-
-                }).reversed())
+                .sorted(Comparator.comparingDouble(DriverResponse::getDistance))
                 .toList();
     }
 }

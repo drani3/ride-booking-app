@@ -11,8 +11,10 @@ import com.rideapp.locationservice.service.DirectionsService;
 import com.rideapp.locationservice.service.GeocodingService;
 import com.rideapp.locationservice.service.LocationService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -20,6 +22,10 @@ import java.util.List;
 @Slf4j
 @RestController
 public class LocationController{
+
+    // Set by the API gateway from the verified JWT; clients cannot supply them
+    private static final String USER_ID_HEADER = "X-User-Id";
+    private static final String USER_ROLE_HEADER = "X-User-Role";
 
     private final LocationService locationService;
     private final GeocodingService geocodingService;
@@ -33,7 +39,12 @@ public class LocationController{
 
     @PostMapping("/drivers/update")
     public ResponseEntity<String> updateDriverLocation(
+            @RequestHeader(USER_ID_HEADER) String userId,
+            @RequestHeader(USER_ROLE_HEADER) String role,
             @RequestBody Driver driver){
+        requireDriver(role);
+        // Drivers can only move themselves, whatever driverId the body says
+        driver.setDriverId(userId);
         locationService.updateDriverLocation(driver);
         return ResponseEntity.ok("Driver Location updated");
     }
@@ -50,7 +61,14 @@ public class LocationController{
 
     // called when driver goes offline
     @DeleteMapping("/drivers/{driverID}")
-    public ResponseEntity<String> removeDriver(@PathVariable String driverID){
+    public ResponseEntity<String> removeDriver(
+            @RequestHeader(USER_ID_HEADER) String userId,
+            @RequestHeader(USER_ROLE_HEADER) String role,
+            @PathVariable String driverID){
+        requireDriver(role);
+        if (!driverID.equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Drivers can only take themselves offline");
+        }
         locationService.removeDriver(driverID);
         return ResponseEntity.ok("Driver removed successfully");
     }
@@ -104,4 +122,9 @@ public class LocationController{
         return ResponseEntity.ok(eta);
     }
 
+    private void requireDriver(String role) {
+        if (!"DRIVER".equals(role)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only drivers can do this");
+        }
+    }
 }

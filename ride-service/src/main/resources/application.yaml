@@ -43,6 +43,12 @@ spring:
             value:
               default:
                 type: com.rideapp.rideservice.event.RideMatchedEvent
+#JWT
+jwt:
+  # Base64-encoded HS256 key (min 256 bits). Override with JWT_SECRET outside local dev.
+  secret: ${JWT_SECRET:ZGV2LW9ubHktc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9kdWN0aW9uLTMyYnl0ZXMhIQ==}
+  expiration-ms: 3600000
+
 location:
   service:
     url: http://localhost:8082

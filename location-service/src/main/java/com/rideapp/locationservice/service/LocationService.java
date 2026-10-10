@@ -24,18 +24,6 @@ public class LocationService {
     private static final String DRIVERS_GEO_KEY = "drivers:locations";
     private static final String AVAILABLE_DRIVERS_GEO_KEY =
             "drivers:available:locations";
-    private static final String RESERVE_DRIVER_SCRIPT = """
-        local status = redis.call('GET', KEYS[1])
-
-        if status == 'AVAILABLE' then
-            redis.call('SET', KEYS[1], 'ON_TRIP')
-            redis.call('ZREM', KEYS[2], ARGV[1])
-            return 1
-        end
-
-        return 0
-        """;
-
     private static final String ASSIGN_DRIVER_SCRIPT = """
         local exists = redis.call('ZSCORE', KEYS[1], ARGV[1])
 

@@ -20,8 +20,8 @@ services:
     image: mysql:8.0
     container_name: mysql-rideshare
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: ride_db
+      MYSQL_ROOT_PASSWORD: admin@123
+      MYSQL_DATABASE: uberapp
     ports:
       - "3306:3306"
     volumes:

@@ -17,7 +17,7 @@ public class RedisMessageSubscriber {
     public void handleMessage(String message) {
         try {
             DriverLocationUpdate update = objectMapper.readValue(message, DriverLocationUpdate.class);
-            locationTrackingService.broadcastDriverLocation(update);
+            locationTrackingService.sendDriverLocationToLocalClients(update);
             log.debug("Received and broadcasted driver location update from Redis for ride {}", update.getRideId());
         } catch (Exception e) {
             log.error("Error processing Redis message", e);

@@ -8,6 +8,8 @@ import com.google.maps.model.DirectionsResult;
 import com.google.maps.model.LatLng;
 import com.rideapp.locationservice.dto.DirectionsRequest;
 import com.rideapp.locationservice.dto.DirectionsResponse;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -35,10 +37,19 @@ public class DirectionsService {
 
     private static final String DIRECTIONS_CACHE_PREFIX = "directions:";
 
-    private GeoApiContext getGeoApiContext() {
-        return new GeoApiContext.Builder()
+    // One shared context: each GeoApiContext owns a thread pool and must be shut down
+    private GeoApiContext geoApiContext;
+
+    @PostConstruct
+    void initGeoApiContext() {
+        geoApiContext = new GeoApiContext.Builder()
                 .apiKey(apiKey)
                 .build();
+    }
+
+    @PreDestroy
+    void shutdownGeoApiContext() {
+        geoApiContext.shutdown();
     }
 
     private String getCacheKey(double originLat, double originLng, double destLat, double destLng) {
@@ -67,7 +78,7 @@ public class DirectionsService {
         DirectionsResponse response = new DirectionsResponse();
 
         try {
-            GeoApiContext context = getGeoApiContext();
+            GeoApiContext context = geoApiContext;
             LatLng origin = new LatLng(request.getOriginLatitude(), request.getOriginLongitude());
             LatLng destination = new LatLng(request.getDestinationLatitude(), request.getDestinationLongitude());
 

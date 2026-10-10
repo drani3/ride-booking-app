@@ -9,6 +9,8 @@ import com.google.maps.model.LatLng;
 import com.rideapp.locationservice.dto.GeocodingRequest;
 import com.rideapp.locationservice.dto.GeocodingResponse;
 import com.rideapp.locationservice.dto.ReverseGeocodingRequest;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -35,10 +37,19 @@ public class GeocodingService {
     private static final String GEOCODE_CACHE_PREFIX = "geocode:";
     private static final String REVERSE_GEOCODE_CACHE_PREFIX = "reverse_geocode:";
 
-    private GeoApiContext getGeoApiContext() {
-        return new GeoApiContext.Builder()
+    // One shared context: each GeoApiContext owns a thread pool and must be shut down
+    private GeoApiContext geoApiContext;
+
+    @PostConstruct
+    void initGeoApiContext() {
+        geoApiContext = new GeoApiContext.Builder()
                 .apiKey(apiKey)
                 .build();
+    }
+
+    @PreDestroy
+    void shutdownGeoApiContext() {
+        geoApiContext.shutdown();
     }
 
     private String getCacheKey(String address) {
@@ -70,7 +81,7 @@ public class GeocodingService {
         GeocodingResponse response = new GeocodingResponse();
         
         try {
-            GeoApiContext context = getGeoApiContext();
+            GeoApiContext context = geoApiContext;
             GeocodingResult[] results = GeocodingApi.geocode(context, request.getAddress()).await();
             
             if (results != null && results.length > 0) {
@@ -139,7 +150,7 @@ public class GeocodingService {
         GeocodingResponse response = new GeocodingResponse();
         
         try {
-            GeoApiContext context = getGeoApiContext();
+            GeoApiContext context = geoApiContext;
             LatLng location = new LatLng(request.getLatitude(), request.getLongitude());
             GeocodingResult[] results = GeocodingApi.reverseGeocode(context, location).await();
             

@@ -16,6 +16,7 @@ import com.rideapp.rideservice.service.LocationTrackingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -38,8 +39,8 @@ public class RideService {
      * create ride in DB with REQUESTED STATUS
      */
 
-    public RideResponse requestRide(RideRequest request){
-        log.info("New ride request from rider: {}", request.getRiderId());
+    public RideResponse requestRide(String riderId, RideRequest request){
+        log.info("New ride request from rider: {}", riderId);
 
         // Geocode addresses if coordinates not provided
         double pickupLat, pickupLng, dropLat, dropLng;
@@ -88,7 +89,7 @@ public class RideService {
 
         //Step 1: save ride to database
         Ride ride = new Ride();
-        ride.setRiderId(request.getRiderId());
+        ride.setRiderId(riderId);
         ride.setPickupLatitude(pickupLat);
         ride.setPickupLongitude(pickupLng);
         ride.setPickupAddress(formattedPickupAddress);
@@ -96,11 +97,16 @@ public class RideService {
         ride.setDropLongitude(dropLng);
         ride.setDropAddress(formattedDropAddress);
         ride.setStatus(RideStatus.REQUESTED);
-        ride.setEstimatedFare(calculateEstimateFare(request));
+        ride.setEstimatedFare(calculateEstimateFare(pickupLat, pickupLng, dropLat, dropLng));
 
         Ride savedRide = rideRepository.save(ride);
 
-        // Step 2: Publish even to Kafka
+        // Step 2: Move to MATCHING before publishing, so a fast ride.matched
+        // event can't be overwritten by this save
+        savedRide.setStatus(RideStatus.MATCHING);
+        savedRide = rideRepository.save(savedRide);
+
+        // Step 3: Publish event to Kafka
         // Matching service will consume this and find nearest driver
 
         RideRequestedEvent event = new RideRequestedEvent(
@@ -117,16 +123,18 @@ public class RideService {
         kafkaTemplate.send(RIDE_REQUESTED_TOPIC, savedRide.getId(), event);
         log.info("RideRequestedEvent published to Kafka for ride: {}", savedRide.getId());
 
-        //Update status to Matching
-        savedRide.setStatus(RideStatus.MATCHING);
-        rideRepository.save(savedRide);
-
         return mapToResponse(savedRide);
     }
 
     public void updateRideWithDriver(String rideId, String driverId){
         Ride ride = rideRepository.findById(rideId)
                 .orElseThrow(() -> new RuntimeException("Ride not found"));
+
+        if (ride.getStatus() != RideStatus.MATCHING) {
+            log.warn("Ignoring driver {} for ride {} in status {}", driverId, rideId, ride.getStatus());
+            locationServiceClient.markDriverAvailable(driverId);
+            return;
+        }
 
         ride.setDriverId(driverId);
         ride.setStatus(RideStatus.ACCEPTED);
@@ -178,18 +186,10 @@ public class RideService {
         }
     }
 
-    public void simulateDriverToPickupLocation(String rideId){
-        int step_size = 10;
+    public RideResponse startRide(String rideId, String driverId){
         Ride ride = rideRepository.findById(rideId)
                 .orElseThrow(() -> new RuntimeException("Ride not found"));
-        double lat = ride.getPickupLatitude() + (ride.getDropLatitude()-ride.getPickupLatitude())/step_size;
-        double lng = ride.getPickupLongitude() + (ride.getDropLongitude()-ride.getPickupLongitude())/step_size;
-
-    }
-
-    public RideResponse startRide(String rideId){
-        Ride ride = rideRepository.findById(rideId)
-                .orElseThrow(() -> new RuntimeException("Ride not found"));
+        requireAssignedDriver(ride, driverId);
 
         if(ride.getStatus() != RideStatus.ACCEPTED){
             throw new RuntimeException("Ride cannot be started. Current status: "+ride.getStatus());
@@ -202,9 +202,10 @@ public class RideService {
         return mapToResponse(ride);
     }
 
-    public RideResponse completeRide(String rideId){
+    public RideResponse completeRide(String rideId, String driverId){
         Ride ride = rideRepository.findById(rideId)
                 .orElseThrow(() -> new RuntimeException("Ride not found"));
+        requireAssignedDriver(ride, driverId);
 
         if(ride.getStatus() != RideStatus.RIDE_STARTED){
             throw new RuntimeException("Ride cannot be completed. Current status: "+ride.getStatus());
@@ -218,20 +219,46 @@ public class RideService {
 
     }
 
-    public RideResponse cancelRide(String rideId){
+    public RideResponse cancelRide(String rideId, String userId){
         Ride ride = rideRepository.findById(rideId)
                 .orElseThrow(() -> new RuntimeException("Ride not found"));
+        requireParticipant(ride, userId);
+
+        if(ride.getStatus() == RideStatus.RIDE_STARTED
+                || ride.getStatus() == RideStatus.COMPLETED
+                || ride.getStatus() == RideStatus.CANCELLED){
+            throw new RuntimeException("Ride cannot be cancelled. Current status: "+ride.getStatus());
+        }
 
         ride.setStatus(RideStatus.CANCELLED);
         rideRepository.save(ride);
-        locationServiceClient.markDriverAvailable(ride.getDriverId());
+        if(ride.getDriverId() != null){
+            locationServiceClient.markDriverAvailable(ride.getDriverId());
+        }
         return mapToResponse(ride);
     }
 
-    public RideResponse getRideById(String rideId){
+    public RideResponse getRideById(String rideId, String userId){
         Ride ride = rideRepository.findById(rideId)
                 .orElseThrow(() -> new RuntimeException("Ride not found"));
+        requireParticipant(ride, userId);
         return mapToResponse(ride);
+    }
+
+    public static boolean isParticipant(Ride ride, String userId){
+        return userId.equals(ride.getRiderId()) || userId.equals(ride.getDriverId());
+    }
+
+    private void requireParticipant(Ride ride, String userId){
+        if(!isParticipant(ride, userId)){
+            throw new AccessDeniedException("You are not part of this ride");
+        }
+    }
+
+    private void requireAssignedDriver(Ride ride, String driverId){
+        if(!driverId.equals(ride.getDriverId())){
+            throw new AccessDeniedException("You are not the driver assigned to this ride");
+        }
     }
 
     public List<RideResponse> getRidesByRider(String riderId){
@@ -241,13 +268,14 @@ public class RideService {
                 .collect(Collectors.toList());
     }
 
-    private double calculateEstimateFare(RideRequest request){
+    private double calculateEstimateFare(double pickupLat, double pickupLng,
+                                         double dropLat, double dropLng){
         // Simplified Haversine distance calculation
-        double lat1 = Math.toRadians(request.getPickupLatitude());
-        double lat2 = Math.toRadians(request.getDropLatitude());
+        double lat1 = Math.toRadians(pickupLat);
+        double lat2 = Math.toRadians(dropLat);
 
-        double lon1 = Math.toRadians(request.getPickupLongitude());
-        double lon2 = Math.toRadians(request.getDropLongitude());
+        double lon1 = Math.toRadians(pickupLng);
+        double lon2 = Math.toRadians(dropLng);
 
         double dLat = lat2 - lat1;
         double dLon = lon2 - lon1;
@@ -257,10 +285,10 @@ public class RideService {
                 *Math.pow(Math.sin(dLon / 2), 2);
 
         double c = 2 * Math.asin(Math.sqrt(a));
-        double dustanceKm = 6371 * c;
+        double distanceKm = 6371 * c;
 
         //Base fare: 50Rs + 12Rs. perKm
-        double fare = 50 + (dustanceKm * 12);
+        double fare = 50 + (distanceKm * 12);
         return Math.round(fare * 100.0) / 100.0;
     }
 

@@ -1,0 +1,56 @@
+#Application
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+
+  #Routes - single entry point for clients.
+  #Internal location endpoints (drivers/nearby, drivers/{id}/assign,
+  #drivers/{id}/available) are intentionally NOT routed.
+  cloud:
+    gateway:
+      routes:
+        - id: auth
+          uri: ${RIDE_SERVICE_URL:http://localhost:8083}
+          predicates:
+            - Path=/api/v1/auth/**
+
+        - id: rides
+          uri: ${RIDE_SERVICE_URL:http://localhost:8083}
+          predicates:
+            - Path=/api/v1/rides/**
+
+        - id: ride-tracking-websocket
+          uri: ${RIDE_SERVICE_WS_URL:ws://localhost:8083}
+          predicates:
+            - Path=/ws-ride-tracking/**
+
+        - id: driver-location-update
+          uri: ${LOCATION_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/v1/location/drivers/update
+            - Method=POST
+
+        - id: driver-go-offline
+          uri: ${LOCATION_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/v1/location/drivers/{driverId}
+            - Method=DELETE
+
+        - id: maps
+          uri: ${LOCATION_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/v1/location/geocode,/api/v1/location/reverse-geocode,/api/v1/location/validate,/api/v1/location/directions,/api/v1/location/eta
+
+#JWT - must be the same key ride-service signs tokens with
+jwt:
+  secret: ${JWT_SECRET:ZGV2LW9ubHktc2VjcmV0LWNoYW5nZS1tZS1pbi1wcm9kdWN0aW9uLTMyYnl0ZXMhIQ==}
+
+#Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info

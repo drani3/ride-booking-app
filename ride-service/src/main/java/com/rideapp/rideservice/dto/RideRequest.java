@@ -11,8 +11,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class RideRequest {
 
-    @NotBlank(message = "Rider Id is required")
-    private String riderId;
+    // riderId is taken from the JWT, never from the request body
 
     private Double pickupLatitude;
 
